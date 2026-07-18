@@ -1,0 +1,7 @@
+{
+  "execMap": {
+    "ts": "npx tsx"
+  },
+  "watch": ["src"],
+  "ext": "ts"
+}

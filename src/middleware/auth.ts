@@ -1,23 +1,30 @@
 import { Request, Response, NextFunction } from "express";
-import { auth } from "../utils/auth";
-import { fromNodeHeaders } from "better-auth/node";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
 
 export const requireAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
-    });
-
-    if (!session || !session.user) {
-      res.status(401).json({ error: "Unauthorized" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Unauthorized: Missing or invalid token" });
       return;
     }
 
+    const token = authHeader.split(" ")[1];
+    
+    if (!token) {
+      res.status(401).json({ error: "Unauthorized: Token missing" });
+      return;
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
     // Attach user to request for downstream handlers
-    (req as any).user = session.user;
+    (req as any).user = decoded;
     next();
   } catch (error) {
     console.error("Auth middleware error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(401).json({ error: "Unauthorized: Invalid token" });
   }
 };

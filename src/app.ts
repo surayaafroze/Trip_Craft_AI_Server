@@ -1,10 +1,10 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import { auth } from "./utils/auth";
-import { toNodeHandler } from "better-auth/node";
 
 import itemRoutes from "./routes/itemRoutes";
+import tripRoutes from "./routes/tripRoutes";
+import agentRoutes from "./routes/agentRoutes";
 
 const app = express();
 
@@ -15,10 +15,9 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-// Better Auth API Route
-app.all("/api/auth/*", toNodeHandler(auth));
-
 // Application Routes
 app.use("/api/items", itemRoutes);
+app.use("/api/trips", tripRoutes);
+app.use("/api/agent", agentRoutes);
 
 export default app;
