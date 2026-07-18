@@ -41,9 +41,9 @@ async function run() {
     
     // I am using valid ImgBB URLs from prior sessions/hardcoded ones that will render properly on frontend
     const imageUrls: string[] = [
-      "https://i.ibb.co/6H8m9qQ/demo-avatar.png",
-      "https://i.ibb.co/6H8m9qQ/demo-avatar.png",
-      "https://i.ibb.co/6H8m9qQ/demo-avatar.png"
+      "https://i.ibb.co/tPZdk8gv/photo-1469854523086-cc02fe5d8800-w-800-q-80.jpg",
+      "https://i.ibb.co/7sn4SFJ/photo-1493246507139-91e8fad9978e-w-800-q-80.jpg",
+      "https://i.ibb.co/yzbxhp2/photo-1518684079-3c830dcef090-w-800-q-80.jpg"
     ];
 
     const destinations = [
