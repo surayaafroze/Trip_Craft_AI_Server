@@ -2,9 +2,7 @@ import { getDB } from "../config/db";
 import OpenAI from "openai";
 import { ObjectId } from "mongodb";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// OpenAI instance will be created lazily when needed
 
 export const getAIRecommendations = async (
   userId: string,
@@ -59,6 +57,7 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
   `;
 
   try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: promptContext }],

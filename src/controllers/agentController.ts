@@ -5,7 +5,7 @@ import { ChatMessage } from "../types/chat";
 import OpenAI from "openai";
 import { toolsDefinition, executeTool } from "../services/agentService";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// OpenAI instance will be created lazily when needed
 
 export const getChatHistory = async (req: Request, res: Response) => {
   try {
@@ -79,6 +79,8 @@ export const chat = async (req: Request, res: Response) => {
 
     // ReAct Loop
     let keepRunning = true;
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    
     while (keepRunning) {
       keepRunning = false;
 

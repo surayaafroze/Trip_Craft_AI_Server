@@ -2,15 +2,16 @@ import { ObjectId } from "mongodb";
 
 export interface DestinationDocument {
     _id?: ObjectId;
+    ownerId: string; // The user who created this destination
     title: string;
-    description: string;
+    shortDescription: string;
+    fullDescription: string;
     images: string[];
     region: "Europe" | "Asia" | "North America" | "South America" | "Africa" | "Oceania";
     category: "Beach" | "Mountain" | "City" | "Culture" | "Adventure" | "Relaxation";
-    estimatedCostPerDay: number;
-    bestTimeToVisit: string;
-    averageRating: number;
-    userId: string; // The user who created this destination
+    avgDailyCost: number;
+    avgRating: number;
+    reviewCount: number;
     createdAt: Date;
     updatedAt: Date;
 }

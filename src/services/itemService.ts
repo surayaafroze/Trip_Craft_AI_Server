@@ -3,13 +3,14 @@ import { getDB } from "../config/db";
 import { DestinationDocument } from "../types";
 
 export const itemService = {
-  async createDestination(data: Omit<DestinationDocument, "createdAt" | "updatedAt" | "averageRating">): Promise<DestinationDocument> {
+  async createDestination(data: Omit<DestinationDocument, "createdAt" | "updatedAt" | "avgRating" | "reviewCount">): Promise<DestinationDocument> {
     const db = getDB();
     const destinations = db.collection<DestinationDocument>("destinations");
     
     const newDoc: DestinationDocument = {
       ...data,
-      averageRating: 0,
+      avgRating: 0,
+      reviewCount: 0,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -37,16 +38,16 @@ export const itemService = {
       filter.region = query.region;
     }
     if (query.minPrice || query.maxPrice) {
-      filter.estimatedCostPerDay = {};
-      if (query.minPrice) filter.estimatedCostPerDay.$gte = parseInt(query.minPrice);
-      if (query.maxPrice) filter.estimatedCostPerDay.$lte = parseInt(query.maxPrice);
+      filter.avgDailyCost = {};
+      if (query.minPrice) filter.avgDailyCost.$gte = parseInt(query.minPrice);
+      if (query.maxPrice) filter.avgDailyCost.$lte = parseInt(query.maxPrice);
     }
     
     // Sorting
     let sort: any = { createdAt: -1 };
-    if (query.sort === "price_asc") sort = { estimatedCostPerDay: 1 };
-    if (query.sort === "price_desc") sort = { estimatedCostPerDay: -1 };
-    if (query.sort === "rating") sort = { averageRating: -1 };
+    if (query.sort === "price_asc") sort = { avgDailyCost: 1 };
+    if (query.sort === "price_desc") sort = { avgDailyCost: -1 };
+    if (query.sort === "rating") sort = { avgRating: -1 };
     
     const items = await destinations.find(filter).sort(sort).skip(skip).limit(limit).toArray();
     const total = await destinations.countDocuments(filter);
@@ -81,13 +82,13 @@ export const itemService = {
     }).limit(4).toArray();
   },
 
-  async getMyDestinations(userId: string) {
+  async getMyDestinations(ownerId: string) {
     const db = getDB();
     const destinations = db.collection<DestinationDocument>("destinations");
-    return destinations.find({ userId }).sort({ createdAt: -1 }).toArray();
+    return destinations.find({ ownerId }).sort({ createdAt: -1 }).toArray();
   },
 
-  async deleteDestination(id: string, userId: string) {
+  async deleteDestination(id: string, ownerId: string) {
     const db = getDB();
     const destinations = db.collection<DestinationDocument>("destinations");
     const reviews = db.collection("reviews");
@@ -95,7 +96,7 @@ export const itemService = {
     // Verify ownership
     const item = await destinations.findOne({ _id: new ObjectId(id) });
     if (!item) return false;
-    if (item.userId !== userId) throw new Error("Unauthorized to delete this item");
+    if (item.ownerId !== ownerId) throw new Error("Unauthorized to delete this item");
     
     await destinations.deleteOne({ _id: new ObjectId(id) });
     // Also delete associated reviews

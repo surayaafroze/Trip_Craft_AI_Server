@@ -55,7 +55,7 @@ export const itemController = {
       
       const newItem = await itemService.createDestination({
         ...validatedData,
-        userId
+        ownerId: userId
       });
       
       res.status(201).json(newItem);
