@@ -3,10 +3,8 @@ import { getDB } from "../config/db";
 import { ObjectId } from "mongodb";
 import { ChatMessage } from "../types/chat";
 import { env } from "../config/env";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import { toolsDefinition, executeTool } from "../services/agentService";
-
-// Gemini instance will be created lazily when needed
 
 export const getChatHistory = async (req: Request, res: Response) => {
   try {
@@ -33,7 +31,7 @@ export const chat = async (req: Request, res: Response) => {
   const { tripId, message } = req.body;
   try {
     const db = getDB();
-    console.log("Chat handler called. Active GEMINI_API_KEY:", env.GEMINI_API_KEY ? env.GEMINI_API_KEY.substring(0, 15) + "..." : "undefined");
+    console.log("Chat handler called. Active ANTHROPIC_API_KEY:", env.ANTHROPIC_API_KEY ? env.ANTHROPIC_API_KEY.substring(0, 15) + "..." : "undefined");
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     if (!tripId || !message) return res.status(400).json({ error: "Missing tripId or message" });
@@ -69,228 +67,145 @@ export const chat = async (req: Request, res: Response) => {
 
     const systemInstruction = "You are a helpful travel assistant. You can help the user plan trips, search for destinations, and update their itinerary. Use the provided tools when necessary. Always provide a friendly, concise response.";
 
-    const parseJSON = (str: string) => {
-      try {
-        return str ? JSON.parse(str) : {};
-      } catch (e) {
-        return { data: str };
-      }
-    };
-
-    const geminiMessages: any[] = [];
+    const anthropicMessages: Anthropic.MessageParam[] = [];
 
     for (const msg of recentMessages) {
       if (msg.role === "system") continue;
-      
-      let role: string = msg.role;
-      if (role === "assistant") role = "model";
-      if (role === "tool") role = "user";
-      
-      const parts: any[] = [];
-      if (msg.content && msg.role !== "tool") parts.push({ text: msg.content });
 
-      if (msg.role === "assistant" && msg.tool_calls) {
-        for (const tc of msg.tool_calls) {
-          parts.push({
-            functionCall: {
-              name: tc.function.name,
-              args: parseJSON(tc.function.arguments)
-            }
-          });
+      if (msg.role === "user") {
+        anthropicMessages.push({ role: "user", content: msg.content || "" });
+      } else if (msg.role === "assistant") {
+        const content: Anthropic.ContentBlockParam[] = [];
+        if (msg.content) {
+          content.push({ type: "text", text: msg.content });
         }
-      }
-
-      if (msg.role === "tool") {
-        parts.push({
-          functionResponse: {
-            name: msg.name,
-            response: parseJSON(msg.content || "")
+        if (msg.tool_calls) {
+          for (const tc of msg.tool_calls) {
+            content.push({
+              type: "tool_use",
+              id: tc.id,
+              name: tc.function.name,
+              input: JSON.parse(tc.function.arguments)
+            });
           }
-        });
-      }
+        }
+        if (content.length > 0) {
+          anthropicMessages.push({ role: "assistant", content });
+        }
+      } else if (msg.role === "tool") {
+        const lastMsg = anthropicMessages[anthropicMessages.length - 1];
+        
+        const toolResultBlock: Anthropic.ToolResultBlockParam = {
+          type: "tool_result",
+          tool_use_id: msg.tool_call_id!,
+          content: msg.content || ""
+        };
 
-      if (geminiMessages.length > 0 && geminiMessages[geminiMessages.length - 1].role === role) {
-        geminiMessages[geminiMessages.length - 1].parts.push(...parts);
-      } else {
-        geminiMessages.push({ role, parts });
+        if (lastMsg && lastMsg.role === "user" && Array.isArray(lastMsg.content)) {
+           lastMsg.content.push(toolResultBlock);
+        } else {
+           anthropicMessages.push({
+             role: "user",
+             content: [toolResultBlock]
+           });
+        }
       }
     }
-
-    // Helper: retry Gemini calls on errors (throws immediately for 429 quota errors to avoid long delays)
-    const callWithRetry = async (fn: () => Promise<any>, maxRetries = 0): Promise<any> => {
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          return await fn();
-        } catch (err: any) {
-          const is429 = err?.status === 429 || err?.code === 429 ||
-            (typeof err?.message === "string" && err.message.includes("429"));
-
-          // If it's a 429 quota error, throw immediately to inform the user.
-          if (is429) {
-             throw err;
-          }
-
-          if (attempt < maxRetries) {
-            const delayMs = 1000;
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-          } else {
-            throw err;
-          }
-        }
-      }
-    };
 
     // ReAct Loop
     let keepRunning = true;
     let loopCount = 0;
     const MAX_LOOPS = 5;
 
-    const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      systemInstruction: systemInstruction,
-    });
+    const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     
     while (keepRunning && loopCount < MAX_LOOPS) {
       loopCount++;
       keepRunning = false;
 
-      const result = await callWithRetry(() => model.generateContentStream({
-        contents: geminiMessages,
-        tools: toolsDefinition as any,
-      }));
-
       let assistantContent = "";
-      const toolCallsMap = new Map<number, any>();
-      let tcIndex = 0;
+      
+      const stream = anthropic.messages.stream({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1024,
+        system: systemInstruction,
+        messages: anthropicMessages,
+        tools: toolsDefinition as Anthropic.Tool[],
+      });
 
-      for await (const chunk of result.stream) {
-        try {
-          const text = chunk.text();
-          if (text) {
-            assistantContent += text;
-            res.write(`data: ${JSON.stringify({ type: "text", content: text })}\n\n`);
+      stream.on('text', (textDelta) => {
+         assistantContent += textDelta;
+         res.write(`data: ${JSON.stringify({ type: "text", content: textDelta })}\n\n`);
+      });
+
+      const message = await stream.finalMessage();
+      
+      const toolUses = message.content.filter(b => b.type === "tool_use") as Anthropic.ToolUseBlock[];
+
+      if (toolUses.length > 0) {
+        const toolCallsForDB = toolUses.map(tu => ({
+          id: tu.id,
+          type: "function",
+          function: {
+            name: tu.name,
+            arguments: JSON.stringify(tu.input)
           }
-        } catch (e) {
-          // ignore error if chunk does not contain text (e.g. function call only)
-        }
+        }));
 
-        try {
-          const calls = chunk.functionCalls();
-          if (calls && calls.length > 0) {
-            for (const fc of calls) {
-              toolCallsMap.set(tcIndex, {
-                id: `call_${tcIndex}`,
-                type: "function",
-                function: {
-                  name: fc.name,
-                  arguments: JSON.stringify(fc.args)
-                }
-              });
-              tcIndex++;
-            }
-          }
-        } catch (e) {
-          // ignore function call error
-        }
-      }
-
-      const toolCalls = Array.from(toolCallsMap.values());
-
-      if (toolCalls.length > 0) {
-        // We have tool calls. Let's save the assistant's tool call message
-        const assistantToolMsg: ChatMessage = {
+        await db.collection("chatMessages").insertOne({
           tripId: new ObjectId(tripId as string),
           userId: new ObjectId(userId),
           role: "assistant",
           content: assistantContent || null,
-          tool_calls: toolCalls,
+          tool_calls: toolCallsForDB,
           createdAt: new Date()
-        };
-        await db.collection("chatMessages").insertOne(assistantToolMsg);
-        
-        const assistantParts: any[] = [];
-        if (assistantContent) assistantParts.push({ text: assistantContent });
-        for (const tc of toolCalls) {
-          assistantParts.push({
-            functionCall: {
-              name: tc.function.name,
-              args: parseJSON(tc.function.arguments)
-            }
-          });
-        }
-        
-        geminiMessages.push({
-          role: "model",
-          parts: assistantParts
         });
+        
+        anthropicMessages.push({ role: "assistant", content: message.content });
 
-        // Execute all tools
-        const toolResponseParts: any[] = [];
+        const toolResultBlocks: Anthropic.ToolResultBlockParam[] = [];
 
-        for (const tc of toolCalls) {
-          const args = parseJSON(tc.function.arguments);
+        for (const tu of toolUses) {
+          res.write(`data: ${JSON.stringify({ type: "tool_start", name: tu.name })}\n\n`);
+          
+          const args = tu.input as any;
+          if (!args.tripId) args.tripId = tripId;
+
+          let toolResultStr = "";
           try {
-            res.write(`data: ${JSON.stringify({ type: "tool_start", name: tc.function.name })}\n\n`);
-            
-            // Add tripId implicitly if the tool requires it and we have it
-            if (!args.tripId) args.tripId = tripId;
-
-            const toolResult = await executeTool(tc.function.name, args);
-            const toolResultStr = JSON.stringify(toolResult);
-            
-            const toolMsg: ChatMessage = {
-              tripId: new ObjectId(tripId as string),
-              userId: new ObjectId(userId),
-              role: "tool",
-              content: toolResultStr,
-              tool_call_id: tc.id,
-              name: tc.function.name,
-              createdAt: new Date()
-            };
-            await db.collection("chatMessages").insertOne(toolMsg);
-            
-            toolResponseParts.push({
-              functionResponse: {
-                name: tc.function.name,
-                response: toolResult
-              }
-            });
-
-            res.write(`data: ${JSON.stringify({ type: "tool_end", name: tc.function.name })}\n\n`);
+            const toolResult = await executeTool(tu.name, args);
+            toolResultStr = JSON.stringify(toolResult);
           } catch (err: any) {
             console.error("Tool execution error:", err);
-            const errObj = { error: err.message };
-            const errStr = JSON.stringify(errObj);
-            
-            await db.collection("chatMessages").insertOne({
-              tripId: new ObjectId(tripId as string),
-              userId: new ObjectId(userId),
-              role: "tool",
-              content: errStr,
-              tool_call_id: tc.id,
-              name: tc.function.name,
-              createdAt: new Date()
-            });
-
-            toolResponseParts.push({
-              functionResponse: {
-                name: tc.function.name,
-                response: errObj
-              }
-            });
+            toolResultStr = JSON.stringify({ error: err.message });
           }
+
+          await db.collection("chatMessages").insertOne({
+            tripId: new ObjectId(tripId as string),
+            userId: new ObjectId(userId),
+            role: "tool",
+            content: toolResultStr,
+            tool_call_id: tu.id,
+            name: tu.name,
+            createdAt: new Date()
+          });
+
+          toolResultBlocks.push({
+            type: "tool_result",
+            tool_use_id: tu.id,
+            content: toolResultStr
+          });
+
+          res.write(`data: ${JSON.stringify({ type: "tool_end", name: tu.name })}\n\n`);
         }
         
-        geminiMessages.push({
+        anthropicMessages.push({
           role: "user",
-          parts: toolResponseParts
+          content: toolResultBlocks
         });
         
-        // Loop again with the tool results
         keepRunning = true;
       } else {
-        // No tool calls, just final text
         if (assistantContent) {
           await db.collection("chatMessages").insertOne({
             tripId: new ObjectId(tripId as string),

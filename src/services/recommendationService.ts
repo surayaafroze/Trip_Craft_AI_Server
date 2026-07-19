@@ -1,9 +1,7 @@
 import { getDB } from "../config/db";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import { ObjectId } from "mongodb";
 import { env } from "../config/env";
-
-// Gemini instance will be created lazily when needed
 
 export const getAIRecommendations = async (
   userId: string,
@@ -58,16 +56,20 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
   `;
 
   try {
-    const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    const response = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: promptContext }] }],
-      generationConfig: {
-        temperature: 0.7,
-      }
+    const anthropic = new Anthropic({
+      apiKey: env.ANTHROPIC_API_KEY,
+    });
+    
+    const response = await anthropic.messages.create({
+      model: "claude-3-haiku-20240307",
+      max_tokens: 1000,
+      temperature: 0.7,
+      messages: [
+        { role: 'user', content: promptContext }
+      ]
     });
 
-    const content = response.response.text() || "[]";
+    const content = response.content[0].type === "text" ? response.content[0].text : "[]";
     let rankedSelections: { id: string, reasoning: string }[] = [];
     
     try {
@@ -93,7 +95,7 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
 
     return recommendations;
   } catch (error: any) {
-    console.error("Gemini Recommendation Error:", error);
+    console.error("Claude Recommendation Error:", error);
     throw new Error(error.message || "Failed to generate recommendations from AI");
   }
 };

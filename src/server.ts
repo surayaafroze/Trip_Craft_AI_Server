@@ -4,11 +4,10 @@ import { connectDB } from "./config/db";
 
 const startServer = async () => {
     await connectDB();
-    console.log(`Server starting with GEMINI_API_KEY: ${env.GEMINI_API_KEY.substring(0, 10)}...`);
+    console.log("ANTHROPIC_API_KEY Configured:", !!env.ANTHROPIC_API_KEY);
     app.listen(env.PORT, () => {
         console.log(`Server running on port ${env.PORT}`);
     });
 };
 
 startServer();
-
