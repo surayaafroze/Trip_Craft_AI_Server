@@ -126,3 +126,77 @@ export const deleteTrip = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to delete trip" });
   }
 };
+
+export const addActivityToTrip = async (req: Request, res: Response) => {
+  try {
+    const db = getDB();
+    const { id } = req.params;
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    if (!ObjectId.isValid(id as string)) {
+      return res.status(400).json({ error: "Invalid trip ID" });
+    }
+
+    const { day, activity, cost, time } = req.body;
+
+    if (day === undefined || !activity) {
+      return res.status(400).json({ error: "Missing required fields: day, activity" });
+    }
+
+    const dayNumber = Number(day);
+    const activityCost = Number(cost) || 0;
+
+    const trip = await db.collection<Trip>("trips").findOne({
+      _id: new ObjectId(id as string),
+      userId: new ObjectId(userId)
+    });
+
+    if (!trip) {
+      return res.status(404).json({ error: "Trip not found or unauthorized" });
+    }
+
+    const newActivity = {
+      time: time || "10:00 AM", // default time if none provided
+      activity,
+      cost: activityCost
+    };
+
+    let updatedItinerary = [...(trip.itinerary || [])];
+    const dayIndex = updatedItinerary.findIndex(d => d.day === dayNumber);
+
+    if (dayIndex >= 0) {
+      // Day exists, push activity
+      updatedItinerary[dayIndex].activities.push(newActivity);
+    } else {
+      // Day does not exist, create it
+      updatedItinerary.push({
+        day: dayNumber,
+        activities: [newActivity]
+      });
+      // Sort itinerary by day
+      updatedItinerary.sort((a, b) => a.day - b.day);
+    }
+
+    const newTotalCost = (trip.estimatedTotalCost || 0) + activityCost;
+
+    await db.collection("trips").updateOne(
+      { _id: new ObjectId(id as string) },
+      { 
+        $set: { 
+          itinerary: updatedItinerary,
+          estimatedTotalCost: newTotalCost,
+          updatedAt: new Date()
+        } 
+      }
+    );
+
+    res.json({ message: "Activity added successfully", itinerary: updatedItinerary });
+  } catch (error) {
+    console.error("Error adding activity to trip:", error);
+    res.status(500).json({ error: "Failed to add activity" });
+  }
+};

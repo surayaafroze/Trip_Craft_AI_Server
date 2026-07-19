@@ -78,3 +78,64 @@ export const me = async (req: Request, res: Response): Promise<void> => {
   const user = (req as any).user;
   res.json({ user });
 };
+
+export const googleLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      res.status(400).json({ error: "Google credential is required" });
+      return;
+    }
+
+    // Verify access token by fetching user info directly from Google
+    const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    
+    if (!userInfoRes.ok) {
+      res.status(400).json({ error: "Invalid Google token" });
+      return;
+    }
+
+    const payload = await userInfoRes.json();
+    if (!payload || !payload.email) {
+      res.status(400).json({ error: "Invalid Google token payload" });
+      return;
+    }
+
+    const { email, name, picture } = payload;
+    const db = getDB();
+    const usersCollection = db.collection("users");
+
+    let user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      const newUser = {
+        name: name || "Google User",
+        email,
+        picture,
+        authProvider: "google",
+        createdAt: new Date(),
+      };
+      const result = await usersCollection.insertOne(newUser);
+      user = { _id: result.insertedId, ...newUser };
+    }
+
+    const token = jwt.sign(
+      { userId: user._id.toString(), email: user.email, name: user.name },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      message: "Google Login successful",
+      token,
+      user: { id: user._id, name: user.name, email: user.email, picture: user.picture },
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(500).json({ error: "Internal server error during Google Login" });
+  }
+};
+
+

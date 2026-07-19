@@ -29,10 +29,10 @@ export const getChatHistory = async (req: Request, res: Response) => {
 };
 
 export const chat = async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id;
+  const { tripId, message } = req.body;
   try {
     const db = getDB();
-    const userId = (req as any).user?.id;
-    const { tripId, message } = req.body;
     console.log("Chat handler called. Active GEMINI_API_KEY:", env.GEMINI_API_KEY ? env.GEMINI_API_KEY.substring(0, 15) + "..." : "undefined");
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -116,8 +116,8 @@ export const chat = async (req: Request, res: Response) => {
       }
     }
 
-    // Helper: retry Gemini calls on 429 rate-limit errors with exponential backoff
-    const callWithRetry = async (fn: () => Promise<any>, maxRetries = 3): Promise<any> => {
+    // Helper: retry Gemini calls on errors (disabled for 429 to avoid long delays in Mock Mode)
+    const callWithRetry = async (fn: () => Promise<any>, maxRetries = 0): Promise<any> => {
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           return await fn();
@@ -125,20 +125,13 @@ export const chat = async (req: Request, res: Response) => {
           const is429 = err?.status === 429 || err?.code === 429 ||
             (typeof err?.message === "string" && err.message.includes("429"));
 
-          if (is429 && attempt < maxRetries) {
-            // Try to extract retryDelay from the error message, fallback to exponential
-            let delayMs = Math.pow(2, attempt + 1) * 1000 + Math.random() * 500;
-            try {
-              const parsed = JSON.parse(err.message);
-              const retryDelayStr = parsed?.error?.details?.find((d: any) => d["@type"]?.includes("RetryInfo"))?.retryDelay;
-              if (retryDelayStr) {
-                const secs = parseInt(retryDelayStr.replace("s", ""), 10);
-                if (!isNaN(secs)) delayMs = secs * 1000 + 500;
-              }
-            } catch { /* ignore parse errors */ }
+          // If it's a 429 quota error, throw immediately so the Mock Mode catches it without 15 seconds of waiting.
+          if (is429) {
+             throw err;
+          }
 
-            console.warn(`Gemini 429 rate limit hit. Retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt + 1}/${maxRetries})...`);
-            res.write(`data: ${JSON.stringify({ type: "status", message: `Rate limit reached. Retrying in ${Math.round(delayMs / 1000)}s...` })}\n\n`);
+          if (attempt < maxRetries) {
+            const delayMs = 1000;
             await new Promise(resolve => setTimeout(resolve, delayMs));
           } else {
             throw err;
@@ -149,13 +142,17 @@ export const chat = async (req: Request, res: Response) => {
 
     // ReAct Loop
     let keepRunning = true;
+    let loopCount = 0;
+    const MAX_LOOPS = 5;
+
     const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash",
       systemInstruction: systemInstruction,
     });
     
-    while (keepRunning) {
+    while (keepRunning && loopCount < MAX_LOOPS) {
+      loopCount++;
       keepRunning = false;
 
       const result = await callWithRetry(() => model.generateContentStream({
@@ -306,15 +303,49 @@ export const chat = async (req: Request, res: Response) => {
       }
     }
 
+    if (loopCount >= MAX_LOOPS && keepRunning) {
+      const fallbackMsg = "I had to stop thinking because it was taking too long. Please try asking in a different way.";
+      res.write(`data: ${JSON.stringify({ type: "text", content: fallbackMsg })}\n\n`);
+      await db.collection("chatMessages").insertOne({
+        tripId: new ObjectId(tripId as string),
+        userId: new ObjectId(userId),
+        role: "assistant",
+        content: fallbackMsg,
+        createdAt: new Date()
+      });
+    }
+
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (error: any) {
     console.error("Chat error:", error);
     const is429 = error?.status === 429 || error?.code === 429 ||
       (typeof error?.message === "string" && error.message.includes("429"));
-    const friendlyMsg = is429
-      ? "The AI is temporarily rate-limited (free tier quota exceeded). Please wait a moment and try again."
-      : (error.message || "Internal server error");
+    
+    if (is429) {
+      // Mock Mode Fallback
+      const mockMsg = "I'm currently in Offline/Mock Mode because the AI API limit was reached. But don't worry, your Trip Planner UI is fully functional! You can still explore destinations, add items manually to your trip, and test the features.";
+      res.write(`data: ${JSON.stringify({ type: "text", content: mockMsg })}\n\n`);
+      
+      // Save the mock message to keep chat history intact
+      try {
+        await getDB().collection("chatMessages").insertOne({
+          tripId: new ObjectId(tripId as string),
+          userId: new ObjectId(userId),
+          role: "assistant",
+          content: mockMsg,
+          createdAt: new Date()
+        });
+      } catch (dbErr) {
+        console.error("Error saving mock message:", dbErr);
+      }
+      
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+      return;
+    }
+
+    const friendlyMsg = error.message || "Internal server error";
     res.write(`data: ${JSON.stringify({ type: "error", error: friendlyMsg })}\n\n`);
     res.end();
   }
