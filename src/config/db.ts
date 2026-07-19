@@ -8,7 +8,7 @@ let db: Db = client.db("Trip_Craft_AI");
 
 export const connectDB = async () => {
   try {
-    await client.connect();
+    // await client.connect();
     console.log("Connected to MongoDB");
     await setupIndexes(db);
   } catch (error) {
