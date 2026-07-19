@@ -107,9 +107,8 @@ export const toolsDefinition = [
       parameters: {
         type: "object",
         properties: {
-          tripId: { type: "string", description: "The ID of the trip" }
-        },
-        required: ["tripId"]
+          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." }
+        }
       }
     }
   },
@@ -121,7 +120,7 @@ export const toolsDefinition = [
       parameters: {
         type: "object",
         properties: {
-          tripId: { type: "string" },
+          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." },
           dayNumber: { type: "number", description: "The day number (e.g., 1 for Day 1)" },
           activities: {
             type: "array",
@@ -136,7 +135,7 @@ export const toolsDefinition = [
             }
           }
         },
-        required: ["tripId", "dayNumber", "activities"]
+        required: ["dayNumber", "activities"]
       }
     }
   },
@@ -148,9 +147,8 @@ export const toolsDefinition = [
       parameters: {
         type: "object",
         properties: {
-          tripId: { type: "string" }
-        },
-        required: ["tripId"]
+          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." }
+        }
       }
     }
   }

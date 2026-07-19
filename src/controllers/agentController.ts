@@ -62,7 +62,7 @@ export const chat = async (req: Request, res: Response) => {
     recentMessages.reverse();
 
     const groqMessages: any[] = [];
-    const systemInstruction = "You are a helpful travel assistant. You can help the user plan trips, search for destinations, and update their itinerary. Use the provided tools when necessary. Always provide a friendly, concise response.";
+    const systemInstruction = "You are a helpful travel assistant. You can help the user plan trips, search for destinations, and update their itinerary. Use the provided tools when necessary. You already have the current trip ID implicitly, so never ask the user for a trip ID. If a tool requires a tripId, just pass 'current'. Always provide a friendly, concise response.";
     
     groqMessages.push({ role: "system", content: systemInstruction });
 
