@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 export const requireAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {

@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { getDB } from "../config/db";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
