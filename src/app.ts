@@ -10,7 +10,7 @@ import agentRoutes from "./routes/agentRoutes";
 const app = express();
 
 app.use(cors({
-    origin: env.CLIENT_URL,
+    origin: [env.CLIENT_URL, "http://localhost:3000"],
     credentials: true,
 }));
 app.use(express.json());
