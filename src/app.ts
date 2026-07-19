@@ -21,6 +21,10 @@ import contactRoutes from "./routes/contactRoutes";
 import recommendationRoutes from "./routes/recommendationRoutes";
 
 // Application Routes
+app.get("/", (req, res) => {
+    res.json({ message: "Welcome to TripCraft AI Server", status: "success" });
+});
+
 app.use("/api/items", itemRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/agent", agentRoutes);
