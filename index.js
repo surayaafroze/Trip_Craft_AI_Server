@@ -1,5 +1,5 @@
-import app from '../src/app';
-import { connectDB } from '../src/config/db';
+const app = require('./dist/app').default;
+const { connectDB } = require('./dist/config/db');
 
 let isDbConnected = false;
 
@@ -11,4 +11,4 @@ app.use(async (req, res, next) => {
     next();
 });
 
-export default app;
+module.exports = app;
