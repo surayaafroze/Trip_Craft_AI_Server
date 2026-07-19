@@ -1,17 +1,10 @@
 import { MongoClient, Db } from "mongodb";
-import dotenv from "dotenv";
+import { env } from "./env";
 
-dotenv.config();
-
-const uri = process.env.MONGODB_URI || process.env.MONGO_DB_URI || "";
-if (!uri) {
-  console.error("MONGODB_URI is not defined in environment variables");
-  process.exit(1);
-}
-
+const uri = env.MONGODB_URI;
 const client = new MongoClient(uri);
 
-export const db = client.db("Trip_Craft_AI");
+let db: Db = client.db("Trip_Craft_AI");
 
 export const connectDB = async () => {
   try {

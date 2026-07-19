@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { env } from "./config/env";
 
 import itemRoutes from "./routes/itemRoutes";
 import tripRoutes from "./routes/tripRoutes";
@@ -9,7 +10,7 @@ import agentRoutes from "./routes/agentRoutes";
 const app = express();
 
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: env.CLIENT_URL,
     credentials: true,
 }));
 app.use(express.json());

@@ -1,8 +1,9 @@
 import { getDB } from "../config/db";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ObjectId } from "mongodb";
+import { env } from "../config/env";
 
-// OpenAI instance will be created lazily when needed
+// Gemini instance will be created lazily when needed
 
 export const getAIRecommendations = async (
   userId: string,
@@ -57,14 +58,16 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
   `;
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: promptContext }],
-      temperature: 0.7,
+    const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const response = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: promptContext }] }],
+      generationConfig: {
+        temperature: 0.7,
+      }
     });
 
-    const content = completion.choices[0]?.message?.content || "[]";
+    const content = response.response.text() || "[]";
     let rankedSelections: { id: string, reasoning: string }[] = [];
     
     try {
@@ -90,7 +93,7 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
 
     return recommendations;
   } catch (error) {
-    console.error("OpenAI Recommendation Error:", error);
+    console.error("Gemini Recommendation Error:", error);
     throw new Error("Failed to generate recommendations from AI");
   }
 };
