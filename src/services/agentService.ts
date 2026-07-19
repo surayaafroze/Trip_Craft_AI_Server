@@ -86,60 +86,72 @@ export const estimateTripBudget = async (args: { tripId: string }) => {
 
 export const toolsDefinition = [
   {
-    name: "searchDestinations",
-    description: "Search the database for travel destinations by region or category. Use this to find places for the user.",
-    input_schema: {
-      type: "object",
-      properties: {
-        region: { type: "string", description: "e.g., 'Europe', 'Asia'" },
-        category: { type: "string", description: "e.g., 'Adventure', 'Relaxation'" }
+    type: "function",
+    function: {
+      name: "searchDestinations",
+      description: "Search the database for travel destinations by region or category. Use this to find places for the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          region: { type: "string", description: "e.g., 'Europe', 'Asia'" },
+          category: { type: "string", description: "e.g., 'Adventure', 'Relaxation'" }
+        }
       }
     }
   },
   {
-    name: "getTripById",
-    description: "Get current details and itinerary of the user's trip.",
-    input_schema: {
-      type: "object",
-      properties: {
-        tripId: { type: "string", description: "The ID of the trip" }
-      },
-      required: ["tripId"]
+    type: "function",
+    function: {
+      name: "getTripById",
+      description: "Get current details and itinerary of the user's trip.",
+      parameters: {
+        type: "object",
+        properties: {
+          tripId: { type: "string", description: "The ID of the trip" }
+        },
+        required: ["tripId"]
+      }
     }
   },
   {
-    name: "updateItineraryDay",
-    description: "Update the activities for a specific day in the itinerary.",
-    input_schema: {
-      type: "object",
-      properties: {
-        tripId: { type: "string" },
-        dayNumber: { type: "number", description: "The day number (e.g., 1 for Day 1)" },
-        activities: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              time: { type: "string", description: "e.g., '09:00 AM'" },
-              activity: { type: "string", description: "Description of the activity" },
-              cost: { type: "number", description: "Estimated cost in USD" }
-            },
-            required: ["time", "activity", "cost"]
+    type: "function",
+    function: {
+      name: "updateItineraryDay",
+      description: "Update the activities for a specific day in the itinerary.",
+      parameters: {
+        type: "object",
+        properties: {
+          tripId: { type: "string" },
+          dayNumber: { type: "number", description: "The day number (e.g., 1 for Day 1)" },
+          activities: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                time: { type: "string", description: "e.g., '09:00 AM'" },
+                activity: { type: "string", description: "Description of the activity" },
+                cost: { type: "number", description: "Estimated cost in USD" }
+              },
+              required: ["time", "activity", "cost"]
+            }
           }
-        }
-      },
-      required: ["tripId", "dayNumber", "activities"]
+        },
+        required: ["tripId", "dayNumber", "activities"]
+      }
     }
   },
   {
-    name: "estimateTripBudget",
-    description: "Calculate and save the estimated total cost of the trip based on the current itinerary.",
-    input_schema: {
-      type: "object",
-      properties: {
-        tripId: { type: "string" }
-      },
-      required: ["tripId"]
+    type: "function",
+    function: {
+      name: "estimateTripBudget",
+      description: "Calculate and save the estimated total cost of the trip based on the current itinerary.",
+      parameters: {
+        type: "object",
+        properties: {
+          tripId: { type: "string" }
+        },
+        required: ["tripId"]
+      }
     }
   }
 ];

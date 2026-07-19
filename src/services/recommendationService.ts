@@ -1,5 +1,5 @@
 import { getDB } from "../config/db";
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { ObjectId } from "mongodb";
 import { env } from "../config/env";
 
@@ -56,20 +56,18 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
   `;
 
   try {
-    const anthropic = new Anthropic({
-      apiKey: env.ANTHROPIC_API_KEY,
-    });
+    const groq = new Groq({ apiKey: env.GROQ_API_KEY });
     
-    const response = await anthropic.messages.create({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 1000,
-      temperature: 0.7,
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
       messages: [
         { role: 'user', content: promptContext }
-      ]
+      ],
+      temperature: 0.7,
+      max_tokens: 1024,
     });
 
-    const content = response.content[0].type === "text" ? response.content[0].text : "[]";
+    const content = response.choices[0]?.message?.content || "[]";
     let rankedSelections: { id: string, reasoning: string }[] = [];
     
     try {
@@ -95,7 +93,7 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
 
     return recommendations;
   } catch (error: any) {
-    console.error("Claude Recommendation Error:", error);
+    console.error("Groq Recommendation Error:", error);
     throw new Error(error.message || "Failed to generate recommendations from AI");
   }
 };

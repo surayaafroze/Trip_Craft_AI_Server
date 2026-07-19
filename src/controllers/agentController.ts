@@ -3,7 +3,7 @@ import { getDB } from "../config/db";
 import { ObjectId } from "mongodb";
 import { ChatMessage } from "../types/chat";
 import { env } from "../config/env";
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { toolsDefinition, executeTool } from "../services/agentService";
 
 export const getChatHistory = async (req: Request, res: Response) => {
@@ -31,16 +31,14 @@ export const chat = async (req: Request, res: Response) => {
   const { tripId, message } = req.body;
   try {
     const db = getDB();
-    console.log("Chat handler called. Active ANTHROPIC_API_KEY:", env.ANTHROPIC_API_KEY ? env.ANTHROPIC_API_KEY.substring(0, 15) + "..." : "undefined");
+    console.log("Chat handler called. Active GROQ_API_KEY:", env.GROQ_API_KEY ? env.GROQ_API_KEY.substring(0, 10) + "..." : "undefined");
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     if (!tripId || !message) return res.status(400).json({ error: "Missing tripId or message" });
 
-    // Validate trip ownership
     const trip = await db.collection("trips").findOne({ _id: new ObjectId(tripId as string), userId: new ObjectId(userId) });
     if (!trip) return res.status(404).json({ error: "Trip not found" });
 
-    // Save user message
     const userMsg: ChatMessage = {
       tripId: new ObjectId(tripId as string),
       userId: new ObjectId(userId),
@@ -50,13 +48,11 @@ export const chat = async (req: Request, res: Response) => {
     };
     await db.collection("chatMessages").insertOne(userMsg);
 
-    // Setup SSE response
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // Fetch last 20 messages for context
     const recentMessages = await db.collection<ChatMessage>("chatMessages")
       .find({ tripId: new ObjectId(tripId as string) })
       .sort({ createdAt: -1 })
@@ -65,115 +61,117 @@ export const chat = async (req: Request, res: Response) => {
     
     recentMessages.reverse();
 
+    const groqMessages: any[] = [];
     const systemInstruction = "You are a helpful travel assistant. You can help the user plan trips, search for destinations, and update their itinerary. Use the provided tools when necessary. Always provide a friendly, concise response.";
-
-    const anthropicMessages: Anthropic.MessageParam[] = [];
+    
+    groqMessages.push({ role: "system", content: systemInstruction });
 
     for (const msg of recentMessages) {
       if (msg.role === "system") continue;
 
       if (msg.role === "user") {
-        anthropicMessages.push({ role: "user", content: msg.content || "" });
+        groqMessages.push({ role: "user", content: msg.content || "" });
       } else if (msg.role === "assistant") {
-        const content: Anthropic.ContentBlockParam[] = [];
-        if (msg.content) {
-          content.push({ type: "text", text: msg.content });
-        }
+        const payload: any = { role: "assistant" };
+        if (msg.content) payload.content = msg.content;
         if (msg.tool_calls) {
-          for (const tc of msg.tool_calls) {
-            content.push({
-              type: "tool_use",
-              id: tc.id,
+          payload.tool_calls = msg.tool_calls.map(tc => ({
+            id: tc.id,
+            type: "function",
+            function: {
               name: tc.function.name,
-              input: JSON.parse(tc.function.arguments)
-            });
-          }
+              arguments: typeof tc.function.arguments === "string" ? tc.function.arguments : JSON.stringify(tc.function.arguments)
+            }
+          }));
         }
-        if (content.length > 0) {
-          anthropicMessages.push({ role: "assistant", content });
-        }
+        groqMessages.push(payload);
       } else if (msg.role === "tool") {
-        const lastMsg = anthropicMessages[anthropicMessages.length - 1];
-        
-        const toolResultBlock: Anthropic.ToolResultBlockParam = {
-          type: "tool_result",
-          tool_use_id: msg.tool_call_id!,
+        groqMessages.push({
+          role: "tool",
+          tool_call_id: msg.tool_call_id,
+          name: msg.name,
           content: msg.content || ""
-        };
-
-        if (lastMsg && lastMsg.role === "user" && Array.isArray(lastMsg.content)) {
-           lastMsg.content.push(toolResultBlock);
-        } else {
-           anthropicMessages.push({
-             role: "user",
-             content: [toolResultBlock]
-           });
-        }
+        });
       }
     }
 
-    // ReAct Loop
     let keepRunning = true;
     let loopCount = 0;
     const MAX_LOOPS = 5;
 
-    const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const groq = new Groq({ apiKey: env.GROQ_API_KEY });
     
     while (keepRunning && loopCount < MAX_LOOPS) {
       loopCount++;
       keepRunning = false;
 
+      const stream = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: groqMessages,
+        tools: toolsDefinition as any,
+        tool_choice: "auto",
+        stream: true,
+      });
+
       let assistantContent = "";
-      
-      const stream = anthropic.messages.stream({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1024,
-        system: systemInstruction,
-        messages: anthropicMessages,
-        tools: toolsDefinition as Anthropic.Tool[],
-      });
+      const toolCallsMap = new Map<number, any>();
 
-      stream.on('text', (textDelta) => {
-         assistantContent += textDelta;
-         res.write(`data: ${JSON.stringify({ type: "text", content: textDelta })}\n\n`);
-      });
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        
+        if (delta?.content) {
+          assistantContent += delta.content;
+          res.write(`data: ${JSON.stringify({ type: "text", content: delta.content })}\n\n`);
+        }
 
-      const message = await stream.finalMessage();
-      
-      const toolUses = message.content.filter(b => b.type === "tool_use") as Anthropic.ToolUseBlock[];
-
-      if (toolUses.length > 0) {
-        const toolCallsForDB = toolUses.map(tu => ({
-          id: tu.id,
-          type: "function",
-          function: {
-            name: tu.name,
-            arguments: JSON.stringify(tu.input)
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            if (!toolCallsMap.has(tc.index)) {
+              toolCallsMap.set(tc.index, {
+                id: tc.id,
+                type: "function",
+                function: { name: tc.function?.name, arguments: tc.function?.arguments || "" }
+              });
+            } else {
+              const existing = toolCallsMap.get(tc.index);
+              if (tc.function?.arguments) {
+                existing.function.arguments += tc.function.arguments;
+              }
+            }
           }
-        }));
+        }
+      }
 
+      const toolCalls = Array.from(toolCallsMap.values());
+
+      if (toolCalls.length > 0) {
         await db.collection("chatMessages").insertOne({
           tripId: new ObjectId(tripId as string),
           userId: new ObjectId(userId),
           role: "assistant",
           content: assistantContent || null,
-          tool_calls: toolCallsForDB,
+          tool_calls: toolCalls,
           createdAt: new Date()
         });
-        
-        anthropicMessages.push({ role: "assistant", content: message.content });
 
-        const toolResultBlocks: Anthropic.ToolResultBlockParam[] = [];
+        const assistantMsgPayload: any = { role: "assistant", tool_calls: toolCalls };
+        if (assistantContent) assistantMsgPayload.content = assistantContent;
+        groqMessages.push(assistantMsgPayload);
 
-        for (const tu of toolUses) {
-          res.write(`data: ${JSON.stringify({ type: "tool_start", name: tu.name })}\n\n`);
+        for (const tc of toolCalls) {
+          res.write(`data: ${JSON.stringify({ type: "tool_start", name: tc.function.name })}\n\n`);
           
-          const args = tu.input as any;
+          let args;
+          try {
+            args = JSON.parse(tc.function.arguments);
+          } catch (e) {
+            args = {};
+          }
           if (!args.tripId) args.tripId = tripId;
 
           let toolResultStr = "";
           try {
-            const toolResult = await executeTool(tu.name, args);
+            const toolResult = await executeTool(tc.function.name, args);
             toolResultStr = JSON.stringify(toolResult);
           } catch (err: any) {
             console.error("Tool execution error:", err);
@@ -185,24 +183,20 @@ export const chat = async (req: Request, res: Response) => {
             userId: new ObjectId(userId),
             role: "tool",
             content: toolResultStr,
-            tool_call_id: tu.id,
-            name: tu.name,
+            tool_call_id: tc.id,
+            name: tc.function.name,
             createdAt: new Date()
           });
 
-          toolResultBlocks.push({
-            type: "tool_result",
-            tool_use_id: tu.id,
+          groqMessages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            name: tc.function.name,
             content: toolResultStr
           });
 
-          res.write(`data: ${JSON.stringify({ type: "tool_end", name: tu.name })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "tool_end", name: tc.function.name })}\n\n`);
         }
-        
-        anthropicMessages.push({
-          role: "user",
-          content: toolResultBlocks
-        });
         
         keepRunning = true;
       } else {
