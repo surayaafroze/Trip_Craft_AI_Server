@@ -116,7 +116,7 @@ export const chat = async (req: Request, res: Response) => {
       }
     }
 
-    // Helper: retry Gemini calls on errors (disabled for 429 to avoid long delays in Mock Mode)
+    // Helper: retry Gemini calls on errors (throws immediately for 429 quota errors to avoid long delays)
     const callWithRetry = async (fn: () => Promise<any>, maxRetries = 0): Promise<any> => {
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -125,7 +125,7 @@ export const chat = async (req: Request, res: Response) => {
           const is429 = err?.status === 429 || err?.code === 429 ||
             (typeof err?.message === "string" && err.message.includes("429"));
 
-          // If it's a 429 quota error, throw immediately so the Mock Mode catches it without 15 seconds of waiting.
+          // If it's a 429 quota error, throw immediately to inform the user.
           if (is429) {
              throw err;
           }
@@ -319,32 +319,6 @@ export const chat = async (req: Request, res: Response) => {
     res.end();
   } catch (error: any) {
     console.error("Chat error:", error);
-    const is429 = error?.status === 429 || error?.code === 429 ||
-      (typeof error?.message === "string" && error.message.includes("429"));
-    
-    if (is429) {
-      // Mock Mode Fallback
-      const mockMsg = "I'm currently in Offline/Mock Mode because the AI API limit was reached. But don't worry, your Trip Planner UI is fully functional! You can still explore destinations, add items manually to your trip, and test the features.";
-      res.write(`data: ${JSON.stringify({ type: "text", content: mockMsg })}\n\n`);
-      
-      // Save the mock message to keep chat history intact
-      try {
-        await getDB().collection("chatMessages").insertOne({
-          tripId: new ObjectId(tripId as string),
-          userId: new ObjectId(userId),
-          role: "assistant",
-          content: mockMsg,
-          createdAt: new Date()
-        });
-      } catch (dbErr) {
-        console.error("Error saving mock message:", dbErr);
-      }
-      
-      res.write(`data: [DONE]\n\n`);
-      res.end();
-      return;
-    }
-
     const friendlyMsg = error.message || "Internal server error";
     res.write(`data: ${JSON.stringify({ type: "error", error: friendlyMsg })}\n\n`);
     res.end();

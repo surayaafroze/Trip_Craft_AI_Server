@@ -92,8 +92,8 @@ Do NOT include markdown formatting like \`\`\`json. Just return the raw JSON arr
     }).filter(Boolean);
 
     return recommendations;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Recommendation Error:", error);
-    throw new Error("Failed to generate recommendations from AI");
+    throw new Error(error.message || "Failed to generate recommendations from AI");
   }
 };
