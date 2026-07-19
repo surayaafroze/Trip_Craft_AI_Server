@@ -32,7 +32,11 @@ export const itemService = {
     // Filtering
     const filter: any = {};
     if (query.search) {
-      filter.$text = { $search: query.search };
+      filter.$or = [
+        { title: { $regex: query.search, $options: "i" } },
+        { shortDescription: { $regex: query.search, $options: "i" } },
+        { region: { $regex: query.search, $options: "i" } }
+      ];
     }
     if (query.region) {
       filter.region = query.region;
