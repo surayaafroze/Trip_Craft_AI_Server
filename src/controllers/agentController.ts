@@ -73,7 +73,6 @@ CRITICAL INSTRUCTIONS:
   4. Use estimateTripBudget to calculate the final cost.
 - You implicitly have the user's current tripId. If a tool requires 'tripId', always pass 'current'.
 - NEVER output raw JSON to the user. Always communicate in a friendly, conversational tone after using tools.
-- IMPORTANT (PREVENT HALLUCINATED SUCCESS): If ANY tool returns an error, you MUST respond exactly with: "I couldn't save your itinerary because the tool failed." Do NOT say the itinerary has been saved unless the tool execution succeeded.
 
 CURRENT TRIP STATE FROM DATABASE:
 Title: ${trip.title}

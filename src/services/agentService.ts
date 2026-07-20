@@ -4,143 +4,167 @@ import { Trip, ItineraryDay } from "../types/trip";
 
 // Tool 1: Search Destinations
 export const searchDestinations = async (args: { region?: string; category?: string }) => {
-  const db = getDB();
-  const query: any = {};
-  if (args.region) query.region = { $regex: new RegExp(args.region, "i") };
-  if (args.category) query.category = { $regex: new RegExp(args.category, "i") };
-  
-  const items = await db.collection("items").find(query).limit(5).toArray();
-  return items.map(item => ({
-    id: item._id,
-    title: item.title,
-    region: item.region,
-    category: item.category,
-    estimatedCostPerDay: item.estimatedCostPerDay,
-    averageRating: item.averageRating,
-  }));
+  console.log("Calling tool: searchDestinations", args);
+  try {
+    const db = getDB();
+    const query: any = {};
+    if (args.region) query.region = { $regex: new RegExp(args.region, "i") };
+    if (args.category) query.category = { $regex: new RegExp(args.category, "i") };
+    
+    const items = await db.collection("items").find(query).limit(5).toArray();
+    console.log("Tool succeeded: searchDestinations");
+    return items.map(item => ({
+      id: item._id,
+      title: item.title,
+      region: item.region,
+      category: item.category,
+      estimatedCostPerDay: item.estimatedCostPerDay,
+      averageRating: item.averageRating,
+    }));
+  } catch (err: any) {
+    console.error("Error in searchDestinations:");
+    console.error(err.stack || err);
+    throw err;
+  }
 };
 
 // Tool 2: Get Trip By Id
 export const getTripById = async (args: { tripId: string }) => {
-  const db = getDB();
-  const trip = await db.collection<Trip>("trips").findOne({ _id: new ObjectId(args.tripId) });
-  if (!trip) throw new Error("Trip not found");
-  return trip;
+  console.log("Calling tool: getTripById", args);
+  try {
+    const db = getDB();
+    const trip = await db.collection<Trip>("trips").findOne({ _id: new ObjectId(args.tripId) });
+    if (!trip) throw new Error("Trip not found");
+    console.log("Tool succeeded: getTripById");
+    return trip;
+  } catch (err: any) {
+    console.error("Error in getTripById:");
+    console.error(err.stack || err);
+    throw err;
+  }
 };
 
 // Tool 2.5: Update Trip Details
 export const updateTripDetails = async (args: { tripId: string; title?: string; region?: string; budgetTarget?: number }) => {
-  const db = getDB();
-  const updateFields: any = { updatedAt: new Date() };
-  if (args.title) updateFields.title = args.title;
-  if (args.region) updateFields.region = args.region;
-  if (args.budgetTarget) updateFields.budgetTarget = args.budgetTarget;
+  console.log("Calling tool: updateTripDetails", args);
+  try {
+    const db = getDB();
+    const updateFields: any = { updatedAt: new Date() };
+    if (args.title) updateFields.title = args.title;
+    if (args.region) updateFields.region = args.region;
+    if (args.budgetTarget) updateFields.budgetTarget = args.budgetTarget;
 
-  const result = await db.collection("trips").findOneAndUpdate(
-    { _id: new ObjectId(args.tripId) },
-    { $set: updateFields },
-    { returnDocument: "after" }
-  );
+    const result = await db.collection("trips").findOneAndUpdate(
+      { _id: new ObjectId(args.tripId) },
+      { $set: updateFields },
+      { returnDocument: "after" }
+    );
 
-  if (!result || !result.value) throw new Error("Trip not found or could not be updated");
-  
-  return {
-    success: true,
-    message: "Trip details updated successfully",
-    updatedTrip: {
-      title: result.value.title,
-      region: result.value.region,
-      budgetTarget: result.value.budgetTarget
-    }
-  };
+    if (!result) throw new Error("Trip not found or could not be updated");
+    
+    console.log("Tool succeeded: updateTripDetails");
+    return {
+      success: true,
+      message: "Trip details updated successfully",
+      updatedTrip: {
+        title: result.title,
+        region: result.region,
+        budgetTarget: result.budgetTarget
+      }
+    };
+  } catch (err: any) {
+    console.error("Error in updateTripDetails:");
+    console.error(err.stack || err);
+    throw err;
+  }
 };
 
 // Tool 3: Update Itinerary Day
 export const updateItineraryDay = async (args: { tripId: string; dayNumber: number; activities: { time: string; activity: string; cost: number }[] }) => {
-  if (!args.tripId || args.tripId === "current" || args.tripId === "null" || args.tripId === "undefined" || args.tripId === "") {
-    throw new Error(`Invalid tripId passed to updateItineraryDay: ${args.tripId}`);
-  }
-
-  console.log("\n[updateItineraryDay] Processing...");
-  console.log({
-    tripId: args.tripId,
-    dayNumber: args.dayNumber,
-    activities: args.activities
-  });
-
-  const db = getDB();
-  
-  // Find the trip first to ensure it exists
-  const tripIdObj = new ObjectId(args.tripId);
-  const trip = await db.collection("trips").findOne({ _id: tripIdObj });
-  if (!trip) throw new Error("Trip not found");
-
-  const existingItinerary = trip.itinerary || [];
-  const dayIndex = existingItinerary.findIndex((d: any) => d.day === args.dayNumber);
-
-  let newItinerary = [...existingItinerary];
-  if (dayIndex >= 0) {
-    newItinerary[dayIndex].activities = args.activities;
-  } else {
-    newItinerary.push({ day: args.dayNumber, activities: args.activities });
-    newItinerary.sort((a: any, b: any) => a.day - b.day);
-  }
-
-  console.log(`[updateItineraryDay] Executing updateOne for tripId: ${args.tripId}...`);
-  const result = await db.collection("trips").updateOne(
-    { _id: tripIdObj },
-    { 
-      $set: { 
-        itinerary: newItinerary,
-        updatedAt: new Date()
-      } 
+  console.log("Calling tool: updateItineraryDay", args);
+  try {
+    if (!args.tripId || args.tripId === "current" || args.tripId === "null" || args.tripId === "undefined" || args.tripId === "") {
+      throw new Error(`Invalid tripId passed to updateItineraryDay: ${args.tripId}`);
     }
-  );
 
-  console.log("[updateItineraryDay] UpdateResult:", result);
+    const db = getDB();
+    
+    // Find the trip first to ensure it exists
+    const tripIdObj = new ObjectId(args.tripId);
+    const trip = await db.collection("trips").findOne({ _id: tripIdObj });
+    if (!trip) throw new Error("Trip not found");
 
-  if (result.modifiedCount === 0) {
-    console.error(`[updateItineraryDay] Warning: modifiedCount is 0! The database was not updated.`);
+    const existingItinerary = trip.itinerary || [];
+    const dayIndex = existingItinerary.findIndex((d: any) => d.day === args.dayNumber);
+
+    let newItinerary = [...existingItinerary];
+    if (dayIndex >= 0) {
+      newItinerary[dayIndex].activities = args.activities;
+    } else {
+      newItinerary.push({ day: args.dayNumber, activities: args.activities });
+      newItinerary.sort((a: any, b: any) => a.day - b.day);
+    }
+
+    const result = await db.collection("trips").updateOne(
+      { _id: tripIdObj },
+      { 
+        $set: { 
+          itinerary: newItinerary,
+          updatedAt: new Date()
+        } 
+      }
+    );
+
+    console.log("[updateItineraryDay] UpdateResult:", { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount, acknowledged: result.acknowledged });
+
+    console.log("Tool succeeded: updateItineraryDay");
+    return {
+      success: true,
+      message: `Day ${args.dayNumber} itinerary updated successfully`,
+      dayNumber: args.dayNumber,
+      activitiesCount: args.activities.length
+    };
+  } catch (err: any) {
+    console.error("Error in updateItineraryDay:");
+    console.error(err.stack || err);
+    throw err;
   }
-
-  // Verify the update
-  const updatedTrip = await db.collection("trips").findOne({ _id: tripIdObj });
-  console.log("[updateItineraryDay] Verified Itinerary in DB:", JSON.stringify(updatedTrip?.itinerary, null, 2));
-
-  return {
-    success: true,
-    message: `Day ${args.dayNumber} itinerary updated successfully`,
-    dayNumber: args.dayNumber,
-    activitiesCount: args.activities.length
-  };
 };
 
 // Tool 4: Estimate Trip Budget
 export const estimateTripBudget = async (args: { tripId: string }) => {
-  const db = getDB();
-  const trip = await db.collection<Trip>("trips").findOne({ _id: new ObjectId(args.tripId) });
-  if (!trip) throw new Error("Trip not found");
+  console.log("Calling tool: estimateTripBudget", args);
+  try {
+    const db = getDB();
+    const trip = await db.collection<Trip>("trips").findOne({ _id: new ObjectId(args.tripId) });
+    if (!trip) throw new Error("Trip not found");
 
-  const itinerary = trip.itinerary || [];
-  let totalCost = 0;
+    const itinerary = trip.itinerary || [];
+    let totalCost = 0;
 
-  for (const day of itinerary) {
-    for (const act of day.activities) {
-      totalCost += Number(act.cost) || 0;
+    for (const day of itinerary) {
+      for (const act of day.activities) {
+        totalCost += Number(act.cost) || 0;
+      }
     }
+
+    await db.collection("trips").updateOne(
+      { _id: new ObjectId(args.tripId) },
+      { $set: { estimatedTotalCost: totalCost, updatedAt: new Date() } }
+    );
+
+    console.log("Tool succeeded: estimateTripBudget");
+    return { 
+      success: true, 
+      estimatedTotalCost: totalCost, 
+      budgetTarget: trip.budgetTarget,
+      status: totalCost <= trip.budgetTarget ? "Under Budget" : "Over Budget"
+    };
+  } catch (err: any) {
+    console.error("Error in estimateTripBudget:");
+    console.error(err.stack || err);
+    throw err;
   }
-
-  await db.collection("trips").updateOne(
-    { _id: new ObjectId(args.tripId) },
-    { $set: { estimatedTotalCost: totalCost, updatedAt: new Date() } }
-  );
-
-  return { 
-    success: true, 
-    estimatedTotalCost: totalCost, 
-    budgetTarget: trip.budgetTarget,
-    status: totalCost <= trip.budgetTarget ? "Under Budget" : "Over Budget"
-  };
 };
 
 export const toolsDefinition = [
