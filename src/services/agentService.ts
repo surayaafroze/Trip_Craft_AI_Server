@@ -28,32 +28,91 @@ export const getTripById = async (args: { tripId: string }) => {
   return trip;
 };
 
-// Tool 3: Update Itinerary Day
-export const updateItineraryDay = async (args: { tripId: string; dayNumber: number; activities: { time: string; activity: string; cost: number }[] }) => {
+// Tool 2.5: Update Trip Details
+export const updateTripDetails = async (args: { tripId: string; title?: string; region?: string; budgetTarget?: number }) => {
   const db = getDB();
-  const trip = await db.collection<Trip>("trips").findOne({ _id: new ObjectId(args.tripId) });
-  if (!trip) throw new Error("Trip not found");
+  const updateFields: any = { updatedAt: new Date() };
+  if (args.title) updateFields.title = args.title;
+  if (args.region) updateFields.region = args.region;
+  if (args.budgetTarget) updateFields.budgetTarget = args.budgetTarget;
 
-  let itinerary = trip.itinerary || [];
-  
-  // Find if day exists
-  const dayIndex = itinerary.findIndex(d => d.day === args.dayNumber);
-  
-  if (dayIndex >= 0) {
-    itinerary[dayIndex].activities = args.activities;
-  } else {
-    itinerary.push({ day: args.dayNumber, activities: args.activities });
-  }
-
-  // Sort by day number
-  itinerary.sort((a, b) => a.day - b.day);
-
-  await db.collection("trips").updateOne(
+  const result = await db.collection("trips").findOneAndUpdate(
     { _id: new ObjectId(args.tripId) },
-    { $set: { itinerary, updatedAt: new Date() } }
+    { $set: updateFields },
+    { returnDocument: "after" }
   );
 
-  return { success: true, message: `Day ${args.dayNumber} updated successfully`, currentItinerary: itinerary };
+  if (!result || !result.value) throw new Error("Trip not found or could not be updated");
+  
+  return {
+    success: true,
+    message: "Trip details updated successfully",
+    updatedTrip: {
+      title: result.value.title,
+      region: result.value.region,
+      budgetTarget: result.value.budgetTarget
+    }
+  };
+};
+
+// Tool 3: Update Itinerary Day
+export const updateItineraryDay = async (args: { tripId: string; dayNumber: number; activities: { time: string; activity: string; cost: number }[] }) => {
+  if (!args.tripId || args.tripId === "current" || args.tripId === "null" || args.tripId === "undefined" || args.tripId === "") {
+    throw new Error(`Invalid tripId passed to updateItineraryDay: ${args.tripId}`);
+  }
+
+  console.log("\n[updateItineraryDay] Processing...");
+  console.log({
+    tripId: args.tripId,
+    dayNumber: args.dayNumber,
+    activities: args.activities
+  });
+
+  const db = getDB();
+  
+  // Find the trip first to ensure it exists
+  const tripIdObj = new ObjectId(args.tripId);
+  const trip = await db.collection("trips").findOne({ _id: tripIdObj });
+  if (!trip) throw new Error("Trip not found");
+
+  const existingItinerary = trip.itinerary || [];
+  const dayIndex = existingItinerary.findIndex((d: any) => d.day === args.dayNumber);
+
+  let newItinerary = [...existingItinerary];
+  if (dayIndex >= 0) {
+    newItinerary[dayIndex].activities = args.activities;
+  } else {
+    newItinerary.push({ day: args.dayNumber, activities: args.activities });
+    newItinerary.sort((a: any, b: any) => a.day - b.day);
+  }
+
+  console.log(`[updateItineraryDay] Executing updateOne for tripId: ${args.tripId}...`);
+  const result = await db.collection("trips").updateOne(
+    { _id: tripIdObj },
+    { 
+      $set: { 
+        itinerary: newItinerary,
+        updatedAt: new Date()
+      } 
+    }
+  );
+
+  console.log("[updateItineraryDay] UpdateResult:", result);
+
+  if (result.modifiedCount === 0) {
+    console.error(`[updateItineraryDay] Warning: modifiedCount is 0! The database was not updated.`);
+  }
+
+  // Verify the update
+  const updatedTrip = await db.collection("trips").findOne({ _id: tripIdObj });
+  console.log("[updateItineraryDay] Verified Itinerary in DB:", JSON.stringify(updatedTrip?.itinerary, null, 2));
+
+  return {
+    success: true,
+    message: `Day ${args.dayNumber} itinerary updated successfully`,
+    dayNumber: args.dayNumber,
+    activitiesCount: args.activities.length
+  };
 };
 
 // Tool 4: Estimate Trip Budget
@@ -108,7 +167,25 @@ export const toolsDefinition = [
         type: "object",
         properties: {
           tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." }
-        }
+        },
+        required: ["tripId"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "updateTripDetails",
+      description: "Update the title, region/destination, and target budget of the current trip.",
+      parameters: {
+        type: "object",
+        properties: {
+          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." },
+          title: { type: "string", description: "The new title of the trip (e.g. '3 Days in Paris')" },
+          region: { type: "string", description: "The destination region or city (e.g. 'Paris', 'Cox\\'s Bazar')" },
+          budgetTarget: { type: "number", description: "The user's maximum budget in USD" }
+        },
+        required: ["tripId"]
       }
     }
   },
@@ -135,7 +212,7 @@ export const toolsDefinition = [
             }
           }
         },
-        required: ["dayNumber", "activities"]
+        required: ["tripId", "dayNumber", "activities"]
       }
     }
   },
@@ -148,7 +225,8 @@ export const toolsDefinition = [
         type: "object",
         properties: {
           tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." }
-        }
+        },
+        required: ["tripId"]
       }
     }
   }
@@ -160,6 +238,8 @@ export const executeTool = async (name: string, args: any) => {
       return await searchDestinations(args);
     case "getTripById":
       return await getTripById(args);
+    case "updateTripDetails":
+      return await updateTripDetails(args);
     case "updateItineraryDay":
       return await updateItineraryDay(args);
     case "estimateTripBudget":

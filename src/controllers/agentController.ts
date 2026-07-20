@@ -62,7 +62,26 @@ export const chat = async (req: Request, res: Response) => {
     recentMessages.reverse();
 
     const groqMessages: any[] = [];
-    const systemInstruction = "You are a helpful travel assistant. You can help the user plan trips, search for destinations, and update their itinerary. Use the provided tools when necessary. You already have the current trip ID implicitly, so never ask the user for a trip ID. If a tool requires a tripId, just pass 'current'. Always provide a friendly, concise response.";
+    const systemInstruction = `You are an expert travel assistant AI with access to external tools.
+CRITICAL INSTRUCTIONS:
+- You MUST use the provided tools to search destinations, update itineraries, and estimate budgets whenever requested.
+- DO NOT hallucinate or make up itinerary details without using tools. Use the updateItineraryDay tool to save the itinerary to the database.
+- WORKFLOW: If the user asks to plan a trip:
+  1. Use updateTripDetails FIRST to update the destination and budget if they changed.
+  2. Use searchDestinations to find activities.
+  3. Use updateItineraryDay to save the itinerary.
+  4. Use estimateTripBudget to calculate the final cost.
+- You implicitly have the user's current tripId. If a tool requires 'tripId', always pass 'current'.
+- NEVER output raw JSON to the user. Always communicate in a friendly, conversational tone after using tools.
+- IMPORTANT (PREVENT HALLUCINATED SUCCESS): If ANY tool returns an error, you MUST respond exactly with: "I couldn't save your itinerary because the tool failed." Do NOT say the itinerary has been saved unless the tool execution succeeded.
+
+CURRENT TRIP STATE FROM DATABASE:
+Title: ${trip.title}
+Region: ${trip.region}
+Target Budget: $${trip.budgetTarget}
+Current Estimated Cost: $${trip.estimatedTotalCost || 0}
+Current Itinerary Saved in Database:
+${JSON.stringify(trip.itinerary || [], null, 2)}`;
     
     groqMessages.push({ role: "system", content: systemInstruction });
 
@@ -162,20 +181,43 @@ export const chat = async (req: Request, res: Response) => {
           res.write(`data: ${JSON.stringify({ type: "tool_start", name: tc.function.name })}\n\n`);
           
           let args;
+          let parseError = null;
           try {
             args = JSON.parse(tc.function.arguments);
-          } catch (e) {
+          } catch (e: any) {
+            parseError = e.message;
             args = {};
           }
-          if (!args.tripId) args.tripId = tripId;
+          // Forcefully inject the correct tripId, ignoring whatever the LLM passed
+          args.tripId = tripId;
 
           let toolResultStr = "";
           try {
+            if (parseError) {
+              const errMsg = `Failed to parse tool arguments: ${parseError}. Please ensure arguments are valid JSON.`;
+              console.error(`[Tool Parse Error] Tool: ${tc.function.name}, Raw Args: ${tc.function.arguments}, Error: ${parseError}`);
+              throw new Error(errMsg);
+            }
+            
+            console.log("\n=========================================");
+            console.log("Tool Called:", tc.function.name);
+            console.log("Arguments:", JSON.stringify(args, null, 2));
+            console.log("Executing tool...");
+            
             const toolResult = await executeTool(tc.function.name, args);
+            
+            console.log("Tool execution completed.");
+            console.log("Result:", JSON.stringify(toolResult, null, 2));
+            console.log("=========================================\n");
+            
             toolResultStr = JSON.stringify(toolResult);
           } catch (err: any) {
-            console.error("Tool execution error:", err);
-            toolResultStr = JSON.stringify({ error: err.message });
+            console.error(`\n================= TOOL EXECUTION ERROR =================`);
+            console.error(`Tool Name: ${tc.function.name}`);
+            console.error(`Arguments: ${JSON.stringify(args, null, 2)}`);
+            console.error(`Stack Trace: ${err.stack || err.message}`);
+            console.error(`========================================================\n`);
+            toolResultStr = JSON.stringify({ error: err.message || "Internal tool execution failed" });
           }
 
           await db.collection("chatMessages").insertOne({
