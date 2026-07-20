@@ -123,13 +123,39 @@ ${JSON.stringify(trip.itinerary || [], null, 2)}`;
       loopCount++;
       keepRunning = false;
 
-      const stream = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: groqMessages,
-        tools: toolsDefinition as any,
-        tool_choice: "auto",
-        stream: true,
-      });
+      let stream;
+      try {
+        stream = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: groqMessages,
+          tools: toolsDefinition as any,
+          tool_choice: "auto",
+          stream: true,
+        });
+      } catch (apiError: any) {
+        console.error("\n[Groq API Error]", apiError.status, apiError.message);
+        
+        // Handle 429 Rate Limit specifically
+        if (apiError.status === 429 || (apiError.message && apiError.message.toLowerCase().includes("rate_limit_exceeded"))) {
+          const rateLimitMsg = "AI service is temporarily busy because the free Groq quota has been reached. Please try again later.";
+          res.write(`data: ${JSON.stringify({ type: "text", content: rateLimitMsg })}\n\n`);
+          
+          // Save the friendly error as an AI message in DB so history is intact
+          await db.collection("chatMessages").insertOne({
+            tripId: new ObjectId(tripId as string),
+            userId: new ObjectId(userId),
+            role: "assistant",
+            content: rateLimitMsg,
+            createdAt: new Date()
+          });
+          
+          // Cleanly abort the ReAct loop without running any tools
+          break;
+        } else {
+          // If it's a different API error, throw it so the outer catch block handles it
+          throw apiError;
+        }
+      }
 
       let assistantContent = "";
       const toolCallsMap = new Map<number, any>();
