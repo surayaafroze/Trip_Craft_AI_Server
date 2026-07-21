@@ -71,7 +71,7 @@ CRITICAL INSTRUCTIONS:
   2. Use searchDestinations to find activities.
   3. Use updateItineraryDay to save the itinerary.
   4. Use estimateTripBudget to calculate the final cost.
-- NEVER output raw JSON to the user. Always communicate in a friendly, conversational tone after using tools.
+- When replying directly to the user, use a friendly, conversational tone.
 
 CURRENT TRIP STATE FROM DATABASE:
 Title: ${trip.title}
@@ -121,6 +121,18 @@ ${JSON.stringify(trip.itinerary || [], null, 2)}`;
     while (keepRunning && loopCount < MAX_LOOPS) {
       loopCount++;
       keepRunning = false;
+
+      console.log(`\n--- GROQ API REQUEST (Loop ${loopCount}) ---`);
+      console.log(`Tools passed to Groq (${toolsDefinition.length}):`, toolsDefinition.map(t => t.function.name).join(", "));
+      const assistantMsgs = groqMessages.filter(m => m.role === "assistant");
+      if (assistantMsgs.length > 0) {
+        console.log(`Assistant messages containing tool_calls in request:`);
+        assistantMsgs.forEach(msg => {
+          if (msg.tool_calls) {
+            console.log(JSON.stringify(msg.tool_calls, null, 2));
+          }
+        });
+      }
 
       let stream;
       try {
@@ -179,6 +191,9 @@ ${JSON.stringify(trip.itinerary || [], null, 2)}`;
               const existing = toolCallsMap.get(tc.index);
               if (tc.function?.arguments) {
                 existing.function.arguments += tc.function.arguments;
+              }
+              if (tc.function?.name) {
+                existing.function.name += tc.function.name;
               }
             }
           }

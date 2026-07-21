@@ -182,9 +182,9 @@ export const toolsDefinition = [
       parameters: {
         type: "object",
         properties: {
-          region: { type: "string", description: "e.g., 'Europe', 'Asia'" },
-          category: { type: "string", description: "e.g., 'Adventure', 'Beach', 'Relaxation'" },
-          maxBudget: { type: "number", description: "Maximum budget per day in USD, e.g. 500" }
+          region: { type: "string", description: "e.g., 'Europe', 'Asia'. Omit if unknown." },
+          category: { type: "string", description: "e.g., 'Adventure', 'Beach'. Omit if unknown." },
+          maxBudget: { type: "number", description: "Maximum budget per day in USD. Omit if unknown." }
         }
       }
     }
@@ -208,9 +208,9 @@ export const toolsDefinition = [
       parameters: {
         type: "object",
         properties: {
-          title: { type: "string", description: "The new title of the trip (e.g. '3 Days in Paris')" },
-          region: { type: "string", description: "The destination region or city (e.g. 'Paris', 'Cox\\'s Bazar')" },
-          budgetTarget: { type: "number", description: "The user's maximum budget in USD" }
+          title: { type: "string", description: "The new title of the trip. Omit if unknown." },
+          region: { type: "string", description: "The destination region or city. Omit if unknown." },
+          budgetTarget: { type: "number", description: "The user's maximum budget in USD. Omit if unknown." }
         }
       }
     }
