@@ -222,7 +222,10 @@ ${JSON.stringify(trip.itinerary || [], null, 2)}`;
           let args;
           let parseError = null;
           try {
-            args = JSON.parse(tc.function.arguments);
+            args = JSON.parse(tc.function.arguments || "{}");
+            if (!args || typeof args !== "object") {
+              args = {};
+            }
           } catch (e: any) {
             parseError = e.message;
             args = {};
