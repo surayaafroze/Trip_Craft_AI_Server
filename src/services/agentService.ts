@@ -3,15 +3,21 @@ import { ObjectId } from "mongodb";
 import { Trip, ItineraryDay } from "../types/trip";
 
 // Tool 1: Search Destinations
-export const searchDestinations = async (args: { region?: string; category?: string }) => {
+export const searchDestinations = async (args: { region?: string; category?: string; maxBudget?: number }) => {
   console.log("Calling tool: searchDestinations", args);
   try {
     const db = getDB();
     const query: any = {};
     if (args.region) query.region = { $regex: new RegExp(args.region, "i") };
     if (args.category) query.category = { $regex: new RegExp(args.category, "i") };
+    if (args.maxBudget) query.estimatedCostPerDay = { $lte: Number(args.maxBudget) };
     
-    const items = await db.collection("items").find(query).limit(5).toArray();
+    let items = await db.collection("items").find(query).limit(5).toArray();
+    // Fallback if no items found with strict budget
+    if (items.length === 0 && args.maxBudget) {
+        delete query.estimatedCostPerDay;
+        items = await db.collection("items").find(query).limit(3).toArray();
+    }
     console.log("Tool succeeded: searchDestinations");
     return items.map(item => ({
       id: item._id,
@@ -172,12 +178,13 @@ export const toolsDefinition = [
     type: "function",
     function: {
       name: "searchDestinations",
-      description: "Search the database for travel destinations by region or category. Use this to find places for the user.",
+      description: "Search the database for travel destinations by region, category, or maximum budget. Use this to find places for the user.",
       parameters: {
         type: "object",
         properties: {
           region: { type: "string", description: "e.g., 'Europe', 'Asia'" },
-          category: { type: "string", description: "e.g., 'Adventure', 'Relaxation'" }
+          category: { type: "string", description: "e.g., 'Adventure', 'Beach', 'Relaxation'" },
+          maxBudget: { type: "number", description: "Maximum budget per day in USD, e.g. 500" }
         }
       }
     }
