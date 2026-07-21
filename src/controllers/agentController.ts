@@ -71,7 +71,6 @@ CRITICAL INSTRUCTIONS:
   2. Use searchDestinations to find activities.
   3. Use updateItineraryDay to save the itinerary.
   4. Use estimateTripBudget to calculate the final cost.
-- You implicitly have the user's current tripId. If a tool requires 'tripId', always pass 'current'.
 - NEVER output raw JSON to the user. Always communicate in a friendly, conversational tone after using tools.
 
 CURRENT TRIP STATE FROM DATABASE:

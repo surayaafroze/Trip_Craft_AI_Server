@@ -196,10 +196,7 @@ export const toolsDefinition = [
       description: "Get current details and itinerary of the user's trip.",
       parameters: {
         type: "object",
-        properties: {
-          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." }
-        },
-        required: ["tripId"]
+        properties: {}
       }
     }
   },
@@ -211,12 +208,10 @@ export const toolsDefinition = [
       parameters: {
         type: "object",
         properties: {
-          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." },
           title: { type: "string", description: "The new title of the trip (e.g. '3 Days in Paris')" },
           region: { type: "string", description: "The destination region or city (e.g. 'Paris', 'Cox\\'s Bazar')" },
           budgetTarget: { type: "number", description: "The user's maximum budget in USD" }
-        },
-        required: ["tripId"]
+        }
       }
     }
   },
@@ -228,7 +223,6 @@ export const toolsDefinition = [
       parameters: {
         type: "object",
         properties: {
-          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." },
           dayNumber: { type: "number", description: "The day number (e.g., 1 for Day 1)" },
           activities: {
             type: "array",
@@ -238,12 +232,11 @@ export const toolsDefinition = [
                 time: { type: "string", description: "e.g., '09:00 AM'" },
                 activity: { type: "string", description: "Description of the activity" },
                 cost: { type: "number", description: "Estimated cost in USD" }
-              },
-              required: ["time", "activity", "cost"]
+              }
             }
           }
         },
-        required: ["tripId", "dayNumber", "activities"]
+        required: ["dayNumber", "activities"]
       }
     }
   },
@@ -254,10 +247,7 @@ export const toolsDefinition = [
       description: "Calculate and save the estimated total cost of the trip based on the current itinerary.",
       parameters: {
         type: "object",
-        properties: {
-          tripId: { type: "string", description: "Automatically injected by the system. Just pass 'current'." }
-        },
-        required: ["tripId"]
+        properties: {}
       }
     }
   }
